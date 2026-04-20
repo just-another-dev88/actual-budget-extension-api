@@ -28,7 +28,6 @@ router.get('/', async (req, res, next) => {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
-    let since = req.query.since as string; // Optional actualQL param
 
     const api = getActualApi();
 
@@ -36,25 +35,21 @@ router.get('/', async (req, res, next) => {
     // getTransactions currently just returns an array but actual QL lets us paginate.
     // For simplicity of wrapper, if using `getTransactions(accountId, startDate, endDate)` we do pagination in-memory, or use q().
 
-    let transactions = [];
+    let transactions: any[] = [];
     if (accountId) {
-      transactions = await api.getTransactions(accountId);
       if (startDate && endDate) {
-        transactions = transactions.filter((t: any) => t.date >= startDate && t.date <= endDate);
+        transactions = await api.getTransactions(accountId, startDate as string, endDate as string);
+      } else {
+        // If not provided, either require it or provide default wide ranges. Actual requires it.
+        transactions = await api.getTransactions(accountId, '1970-01-01', '2099-12-31');
       }
     } else {
-      // Using ActualQL to query all transactions since there's no api method to get all easily without account ID, or we fetch all accounts and aggregate.
-      // An alternative is using ActualQL via  api.runQuery( api.q('transactions').select('*') )
-      const { data } = await api.runQuery(
-        api
-          .q('transactions')
-          .select('*')
-          .filter({
-            ...(startDate && endDate
-              ? { date: { $and: [{ $gte: startDate }, { $lte: endDate }] } }
-              : {}),
-          }),
-      );
+      // Using ActualQL to query all transactions
+      let query = api.q('transactions').select(['*']);
+      if (startDate && endDate) {
+        query = query.filter({ date: { $gte: startDate as string, $lte: endDate as string } } as any);
+      }
+      const { data } = await api.runQuery(query);
       transactions = data;
     }
 

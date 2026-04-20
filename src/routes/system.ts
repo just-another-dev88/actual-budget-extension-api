@@ -8,7 +8,7 @@ router.get('/health', (req, res) => {
     // Just verify the api can be retrieved
     getActualApi();
     res.json({ status: 'ok', ready: true });
-  } catch (e) {
+  } catch {
     res.status(503).json({ status: 'unavailable', ready: false });
   }
 });

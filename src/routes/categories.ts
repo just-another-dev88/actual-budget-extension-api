@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getActualApi } from '../actual/client';
-import { z } from 'zod';
+import { getActualApi } from '../actual/client';
 
 const router = Router();
 

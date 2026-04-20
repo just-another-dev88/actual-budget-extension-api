@@ -7,6 +7,7 @@ const logger = pino();
 
 export const requestLogger = pinoHttp({ logger });
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
   logger.error({ err }, err.message || 'An error occurred');
 
