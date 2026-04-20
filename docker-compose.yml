@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    ports: ["3000:3000"]
+    environment:
+      ACTUAL_SERVER_URL: http://actual:5006
+      ACTUAL_PASSWORD: ${ACTUAL_PASSWORD}
+      ACTUAL_BUDGET_ID: ${ACTUAL_BUDGET_ID}
+      API_KEY: ${API_KEY}
+    volumes:
+      - actual-data:/app/data
+    depends_on:
+      - actual
+
+  actual:
+    image: actualbudget/actual-server:latest
+    ports: ["5006:5006"]
+    volumes:
+      - actual-server-data:/data
+
+volumes:
+  actual-data:
+  actual-server-data:
