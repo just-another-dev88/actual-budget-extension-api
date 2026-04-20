@@ -49,7 +49,7 @@ router.get('/', async (req, res, next) => {
       if (startDate && endDate) {
         query = query.filter({ date: { $gte: startDate as string, $lte: endDate as string } } as any);
       }
-      const { data } = await api.runQuery(query);
+      const { data } = await api.aqlQuery(query);
       transactions = data;
     }
 
