@@ -9,7 +9,7 @@ const configSchema = z.object({
   ACTUAL_BUDGET_ID: z.string().min(1),
   ACTUAL_DATA_DIR: z.string().default('./data'),
   ACTUAL_E2E_PASSWORD: z.string().optional(),
-  API_KEY: z.string().min(16, 'API_KEY must be at least 16 characters long'),
+  API_KEY: z.string().min(18, 'API_KEY must be at least 18 characters long'),
   PORT: z.coerce.number().default(3000),
 });
 

@@ -1,7 +1,5 @@
 import { Router } from 'express';
 import { getActualApi } from '../actual/client';
-import { getActualApi } from '../actual/client';
-
 const router = Router();
 
 router.get('/', async (req, res, next) => {
