@@ -20,12 +20,14 @@ import {
   setBudgetCallbackHandler,
   setBudgetConversation,
 } from './handlers/budget';
+import { startMtprotoBot, type MtprotoBotHandle } from './mtproto';
 import type { MyContext } from './types';
 
 const CONVERSATION_TIMEOUT_MS = 300_000;
 const log = logger.child({ module: 'telegram' });
 
 let bot: Bot<MyContext> | null = null;
+let mtprotoHandle: MtprotoBotHandle | null = null;
 
 /** Retry once on Telegram 429 flood-control responses (capped at 30s). */
 const rateLimitRetry: Transformer = async (prev, method, payload, signal) => {
@@ -136,6 +138,18 @@ export async function startBot(): Promise<void> {
     const instance = createBot(cfg.TELEGRAM_BOT_TOKEN);
     bot = instance;
 
+    if (cfg.TELEGRAM_API_ID && cfg.TELEGRAM_API_HASH) {
+      mtprotoHandle = await startMtprotoBot(instance, {
+        apiId: cfg.TELEGRAM_API_ID,
+        apiHash: cfg.TELEGRAM_API_HASH,
+        botToken: cfg.TELEGRAM_BOT_TOKEN,
+        dataDir: cfg.ACTUAL_DATA_DIR,
+      });
+      setComponentState('telegram', 'running');
+      log.info({ transport: 'mtproto' }, 'Telegram bot is running (MTProto mode)');
+      return;
+    }
+
     await instance.api.setMyCommands(
       BOT_COMMANDS.map((c) => ({ command: c.command, description: c.description })),
     );
@@ -145,7 +159,7 @@ export async function startBot(): Promise<void> {
       .start({
         onStart: () => {
           setComponentState('telegram', 'running');
-          log.info('Telegram bot is running');
+          log.info({ transport: 'bot-api' }, 'Telegram bot is running');
         },
       })
       .catch((err: unknown) => {
@@ -155,11 +169,25 @@ export async function startBot(): Promise<void> {
   } catch (err) {
     setComponentState('telegram', 'error');
     log.error({ err }, 'Failed to start Telegram bot; continuing without bot');
+    mtprotoHandle = null;
     bot = null;
   }
 }
 
 export async function stopBot(): Promise<void> {
+  if (mtprotoHandle) {
+    const handle = mtprotoHandle;
+    mtprotoHandle = null;
+    bot = null;
+    try {
+      await handle.stop();
+      setComponentState('telegram', 'stopped');
+    } catch (err) {
+      log.warn({ err }, 'Error stopping MTProto Telegram bot');
+    }
+    return;
+  }
+
   if (!bot) return;
   const current = bot;
   bot = null;

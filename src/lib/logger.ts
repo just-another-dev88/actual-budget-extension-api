@@ -15,6 +15,7 @@ export const logger = pino({
       '*.password',
       '*.token',
       '*.apiKey',
+      '*.apiHash',
     ],
     censor: '[REDACTED]',
   },

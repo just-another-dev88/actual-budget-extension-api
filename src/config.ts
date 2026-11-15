@@ -60,6 +60,9 @@ export const configSchema = z
     /** Telegram is enabled when a token is configured. */
     TELEGRAM_BOT_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
     TELEGRAM_ALLOWED_USERS: userIdList,
+    /** Optional MTProto developer credentials (from my.telegram.org). */
+    TELEGRAM_API_ID: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
+    TELEGRAM_API_HASH: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.TELEGRAM_BOT_TOKEN && cfg.TELEGRAM_ALLOWED_USERS.length === 0) {
@@ -68,6 +71,22 @@ export const configSchema = z
         path: ['TELEGRAM_ALLOWED_USERS'],
         message:
           'TELEGRAM_ALLOWED_USERS must list at least one user ID when TELEGRAM_BOT_TOKEN is set',
+      });
+    }
+    const hasApiId = cfg.TELEGRAM_API_ID !== undefined;
+    const hasApiHash = cfg.TELEGRAM_API_HASH !== undefined;
+    if (hasApiId !== hasApiHash) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [hasApiId ? 'TELEGRAM_API_HASH' : 'TELEGRAM_API_ID'],
+        message: 'TELEGRAM_API_ID and TELEGRAM_API_HASH must both be set together',
+      });
+    }
+    if ((hasApiId || hasApiHash) && !cfg.TELEGRAM_BOT_TOKEN) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TELEGRAM_BOT_TOKEN'],
+        message: 'TELEGRAM_BOT_TOKEN is required when MTProto credentials are set',
       });
     }
   });

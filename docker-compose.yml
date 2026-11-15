@@ -14,6 +14,8 @@ services:
       CURRENCY_CODE: ${CURRENCY_CODE:-USD}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:-}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
     volumes:
       - actual-data:/app/data
     depends_on:

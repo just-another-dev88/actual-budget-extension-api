@@ -7,7 +7,7 @@ REST extension API and optional Telegram bot for [Actual Budget](https://actualb
 - **Shared Service Layer (`src/services/`)**: Business logic for accounts, categories, transactions, and budgets shared between REST endpoints and Telegram bot handlers.
 - **Serialized Actual Client (`src/actual/client.ts`)**: FIFO mutex (`withActual`) serializing access to `@actual-app/api`, with throttled on-demand sync, background sync, and safe reload ordering.
 - **REST API (`src/routes/`)**: API-key authenticated HTTP endpoints (`X-API-Key`). Only `GET /health` is unauthenticated; `POST /reload` and all financial endpoints require `X-API-Key`.
-- **Telegram Bot (`src/telegram/`)**: Optional long-polling bot (starts automatically when `TELEGRAM_BOT_TOKEN` is set). Locked down to private chats and an explicit numeric user ID allowlist. Failures in Telegram never take down the HTTP API.
+- **Telegram Bot (`src/telegram/`)**: Optional bot (starts automatically when `TELEGRAM_BOT_TOKEN` is set). Supports direct **MTProto TCP** transport when `TELEGRAM_API_ID` + `TELEGRAM_API_HASH` are provided, or falls back to standard Bot API long-polling. Locked down to private chats and an explicit numeric user ID allowlist. Failures in Telegram never take down the HTTP API.
 
 ---
 
@@ -40,12 +40,15 @@ cp .env.example .env
 | `CURRENCY_CODE` | No | `USD` | ISO 4217 3-letter currency code (e.g., `USD`, `PHP`) |
 | `TELEGRAM_BOT_TOKEN` | No | — | Bot token from `@BotFather`; omit to run REST-only |
 | `TELEGRAM_ALLOWED_USERS` | If token set | — | Comma-separated numeric Telegram user IDs (required when token is set) |
+| `TELEGRAM_API_ID` | No | — | Telegram developer `api_id` from my.telegram.org (enables MTProto mode when paired with `TELEGRAM_API_HASH`) |
+| `TELEGRAM_API_HASH` | If API ID set | — | Telegram developer `api_hash` from my.telegram.org (paired with `TELEGRAM_API_ID`) |
 
 ### 3. Telegram Bot Setup
 
 1. Message [@BotFather](https://t.me/BotFather) on Telegram, run `/newbot`, and copy the bot token into `TELEGRAM_BOT_TOKEN`.
 2. Message [@userinfobot](https://t.me/userinfobot) to find your numeric Telegram user ID and add it to `TELEGRAM_ALLOWED_USERS`.
-3. Only private 1-on-1 chats with listed user IDs are permitted; group chats and unauthorized users are silently ignored.
+3. **(Optional — Direct MTProto Mode)**: To connect directly via Telegram MTProto TCP instead of the HTTP Bot API (`api.telegram.org`), sign in to [my.telegram.org](https://my.telegram.org) -> **API development tools**, copy your **App `api_id`** and **App `api_hash`** into `TELEGRAM_API_ID` and `TELEGRAM_API_HASH`. The authenticated MTProto session is persisted at `${ACTUAL_DATA_DIR}/telegram-mtproto.session` (`0600`). Leave both variables unset to use standard Bot API long-polling.
+4. Only private 1-on-1 chats with listed user IDs are permitted; group chats and unauthorized users are silently ignored.
 
 Available bot commands: `/start`, `/help`, `/accounts`, `/categories`, `/transactions`, `/add`, `/budget`, `/setbudget`, `/cancel`.
 
