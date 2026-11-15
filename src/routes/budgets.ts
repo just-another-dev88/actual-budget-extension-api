@@ -1,32 +1,31 @@
 import { Router } from 'express';
-import { getActualApi } from '../actual/client';
 import { z } from 'zod';
+import { getBudgetMonthRaw, setCategoryBudget } from '../services/budgets';
+import { decimalToCents } from '../lib/money';
+import { isValidMonth } from '../lib/dates';
 
 const router = Router();
 
+const monthParam = z.string().refine(isValidMonth, 'Expected month in YYYY-MM format');
+
 router.get('/:month', async (req, res, next) => {
   try {
-    const api = getActualApi();
-    const month = req.params.month; // Expected YYYY-MM
-    const budget = await api.getBudgetMonth(month);
-    res.json(budget);
+    const month = monthParam.parse(req.params.month);
+    res.json(await getBudgetMonthRaw(month));
   } catch (e) {
     next(e);
   }
 });
 
 const patchBudgetSchema = z.object({
-  amount: z.number(),
+  amount: z.number().finite().min(0),
 });
 
 router.patch('/:month/categories/:categoryId', async (req, res, next) => {
   try {
-    const { month, categoryId } = req.params;
+    const month = monthParam.parse(req.params.month);
     const { amount } = patchBudgetSchema.parse(req.body);
-    const api = getActualApi();
-
-    await api.setBudgetAmount(month, categoryId, api.utils.amountToInteger(amount));
-
+    await setCategoryBudget(month, req.params.categoryId, decimalToCents(amount));
     res.json({ success: true });
   } catch (e) {
     next(e);

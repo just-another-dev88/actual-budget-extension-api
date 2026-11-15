@@ -1,6 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import { config } from '../config';
+import { getConfig } from '../config';
+
+function safeEqual(a: string, b: string): boolean {
+  // Hash both sides so the comparison is constant-time regardless of length.
+  const ha = crypto.createHash('sha256').update(a).digest();
+  const hb = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const apiKey = req.header('X-API-Key');
@@ -10,13 +17,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     return;
   }
 
-  const expectedKeyBuffer = Buffer.from(config.API_KEY);
-  const providedKeyBuffer = Buffer.from(apiKey);
-
-  if (
-    expectedKeyBuffer.length !== providedKeyBuffer.length ||
-    !crypto.timingSafeEqual(expectedKeyBuffer, providedKeyBuffer)
-  ) {
+  if (!safeEqual(apiKey, getConfig().API_KEY)) {
     res.status(401).json({ error: 'Unauthorized: Invalid X-API-Key' });
     return;
   }

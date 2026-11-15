@@ -1,117 +1,104 @@
-import { describe, it, expect, vi } from 'vitest';
-
-// Ensure Telegram env vars exist for config validation (dotenv loads .env automatically)
-process.env.TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'test_bot_token';
-process.env.TELEGRAM_ALLOWED_USERS = process.env.TELEGRAM_ALLOWED_USERS || '123456789';
-
-import { formatCurrency, formatDate, escapeHtml, formatTransactionLine } from '../../src/telegram/utils/format';
+import { describe, it, expect } from 'vitest';
+import {
+  formatCurrency,
+  formatDate,
+  escapeHtml,
+  formatTransactionLine,
+  chunkHtmlMessage,
+} from '../../src/telegram/utils/format';
+import { daysAgoISO, todayISO } from '../../src/lib/dates';
+import { parseBudgetAmount, parseTransactionAmount } from '../../src/lib/money';
 
 describe('formatCurrency', () => {
-  it('should format positive amounts', () => {
+  it('should format positive, negative, zero, small, and large amounts', () => {
     expect(formatCurrency(1234)).toBe('$12.34');
-  });
-
-  it('should format negative amounts', () => {
     expect(formatCurrency(-1234)).toBe('-$12.34');
-  });
-
-  it('should format zero', () => {
     expect(formatCurrency(0)).toBe('$0.00');
-  });
-
-  it('should handle small amounts', () => {
     expect(formatCurrency(5)).toBe('$0.05');
-  });
-
-  it('should handle large amounts', () => {
     expect(formatCurrency(1000000)).toBe('$10,000.00');
   });
 });
 
 describe('formatDate', () => {
-  it('should format a date string', () => {
-    const result = formatDate('2024-01-15');
-    expect(result).toContain('Jan');
-    expect(result).toContain('15');
-    expect(result).toContain('2024');
-  });
-
-  it('should format another date', () => {
-    const result = formatDate('2024-12-25');
-    expect(result).toContain('Dec');
-    expect(result).toContain('25');
-    expect(result).toContain('2024');
+  it('should format ISO date strings without timezone shift', () => {
+    expect(formatDate('2024-01-15')).toBe('Jan 15, 2024');
+    expect(formatDate('2024-12-25')).toBe('Dec 25, 2024');
   });
 });
 
 describe('escapeHtml', () => {
-  it('should escape ampersands', () => {
+  it('should escape &, <, >, and quotes', () => {
     expect(escapeHtml('A & B')).toBe('A &amp; B');
-  });
-
-  it('should escape angle brackets', () => {
-    expect(escapeHtml('<script>')).toBe('&lt;script&gt;');
-  });
-
-  it('should handle clean strings', () => {
+    expect(escapeHtml('<script>"x"</script>')).toBe('&lt;script&gt;&quot;x&quot;&lt;/script&gt;');
     expect(escapeHtml('Hello World')).toBe('Hello World');
-  });
-
-  it('should handle all special chars together', () => {
-    expect(escapeHtml('<b>A & B</b>')).toBe('&lt;b&gt;A &amp; B&lt;/b&gt;');
   });
 });
 
 describe('formatTransactionLine', () => {
-  it('should format a basic transaction', () => {
-    const tx = {
+  it('should format TransactionView with category and notes', () => {
+    const result = formatTransactionLine({
       date: '2024-01-15',
-      payee_name: 'Grocery Store',
+      payeeName: 'Grocery Store',
+      categoryName: 'Food',
       amount: -5000,
-    };
-    const result = formatTransactionLine(tx);
-    expect(result).toContain('Grocery Store');
-    expect(result).toContain('$50.00');
-    expect(result).toContain('Jan');
-  });
-
-  it('should use payee if payee_name is missing', () => {
-    const tx = {
-      date: '2024-01-15',
-      payee: 'Some Payee',
-      amount: 1000,
-    };
-    const result = formatTransactionLine(tx);
-    expect(result).toContain('Some Payee');
-  });
-
-  it('should show Unknown for missing payee', () => {
-    const tx = {
-      date: '2024-01-15',
-      amount: 1000,
-    };
-    const result = formatTransactionLine(tx);
-    expect(result).toContain('Unknown');
-  });
-
-  it('should include notes when present', () => {
-    const tx = {
-      date: '2024-01-15',
-      payee_name: 'Store',
-      amount: -2500,
       notes: 'Weekly groceries',
-    };
-    const result = formatTransactionLine(tx);
+    });
+    expect(result).toContain('Grocery Store');
+    expect(result).toContain('-$50.00');
+    expect(result).toContain('Jan 15, 2024');
+    expect(result).toContain('Food');
     expect(result).toContain('Weekly groceries');
   });
 
-  it('should escape HTML in payee names', () => {
-    const tx = {
+  it('should support legacy payee fields and escape HTML', () => {
+    const result = formatTransactionLine({
       date: '2024-01-15',
       payee_name: 'A<B&C',
       amount: 100,
-    };
-    const result = formatTransactionLine(tx);
+    });
     expect(result).toContain('A&lt;B&amp;C');
+  });
+
+  it('should fall back to Unknown when payee is missing', () => {
+    const result = formatTransactionLine({ date: '2024-01-15', amount: 1000 });
+    expect(result).toContain('Unknown');
+  });
+});
+
+describe('chunkHtmlMessage', () => {
+  it('should split long messages on paragraph boundaries under limit', () => {
+    const block = '<b>Section</b>\nLine 1\nLine 2\n\n';
+    const longText = block.repeat(20);
+    const chunks = chunkHtmlMessage(longText, 120);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(120);
+    }
+  });
+});
+
+describe('Timezone date and strict money helpers', () => {
+  it('todayISO respects non-UTC timezone before 08:00 UTC+8', () => {
+    // 2026-08-02T23:30:00Z is 2026-08-03 07:30:00 in Asia/Manila (UTC+8)
+    const now = new Date('2026-08-02T23:30:00Z');
+    expect(todayISO('Asia/Manila', now)).toBe('2026-08-03');
+    expect(daysAgoISO(2, 'Asia/Manila', now)).toBe('2026-08-01');
+  });
+
+  it('parseTransactionAmount defaults to expense and rejects malformed text', () => {
+    expect(parseTransactionAmount('25.50')).toBe(-2550);
+    expect(parseTransactionAmount('-25.50')).toBe(-2550);
+    expect(parseTransactionAmount('+500')).toBe(50000);
+    expect(parseTransactionAmount('1,234.56')).toBe(-123456);
+    expect(parseTransactionAmount('12abc')).toBeNull();
+    expect(parseTransactionAmount('0')).toBeNull();
+  });
+
+  it('parseBudgetAmount rejects negative amounts and malformed strings', () => {
+    expect(parseBudgetAmount('500')).toBe(50000);
+    expect(parseBudgetAmount('0')).toBe(0);
+    expect(parseBudgetAmount('-10')).toBeNull();
+    expect(parseBudgetAmount('12.345')).toBeNull();
   });
 });

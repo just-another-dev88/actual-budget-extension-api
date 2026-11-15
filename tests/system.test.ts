@@ -1,27 +1,49 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-
-// Ensure Telegram env vars exist for config validation (dotenv loads .env automatically)
-process.env.TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'test_bot_token';
-process.env.TELEGRAM_ALLOWED_USERS = process.env.TELEGRAM_ALLOWED_USERS || '123456789';
-
 import app from '../src/app';
 
+const { mockGetActualStatus, mockReloadActual } = vi.hoisted(() => ({
+  mockGetActualStatus: vi.fn(() => ({ ready: true, lastSyncAt: '2026-11-15T02:00:00.000Z' })),
+  mockReloadActual: vi.fn(async () => undefined),
+}));
+
 vi.mock('../src/actual/client', () => ({
-  getActualApi: vi.fn().mockImplementation(() => ({})),
-  reloadActual: vi.fn(),
+  getActualStatus: mockGetActualStatus,
+  reloadActual: mockReloadActual,
+  withActual: vi.fn(),
 }));
 
 describe('System routes', () => {
-  it('GET /health should return ok', async () => {
-    const res = await request(app).get('/health');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok', ready: true });
+  const apiKey = process.env.API_KEY || 'test_api_key_1234567890';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetActualStatus.mockReturnValue({ ready: true, lastSyncAt: '2026-11-15T02:00:00.000Z' });
   });
 
-  it('POST /reload should reload ok', async () => {
+  it('GET /health should return ok when Actual is ready', async () => {
+    const res = await request(app).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'ok', ready: true });
+  });
+
+  it('GET /health should return 503 when Actual is not ready', async () => {
+    mockGetActualStatus.mockReturnValueOnce({ ready: false, lastSyncAt: null });
+    const res = await request(app).get('/health');
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({ status: 'unavailable', ready: false });
+  });
+
+  it('POST /reload should reject unauthenticated requests', async () => {
     const res = await request(app).post('/reload');
+    expect(res.status).toBe(401);
+    expect(mockReloadActual).not.toHaveBeenCalled();
+  });
+
+  it('POST /reload should reload when authenticated', async () => {
+    const res = await request(app).post('/reload').set('X-API-Key', apiKey);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok', reloaded: true });
+    expect(mockReloadActual).toHaveBeenCalledTimes(1);
   });
 });

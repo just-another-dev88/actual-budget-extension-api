@@ -1,12 +1,11 @@
 import { Router } from 'express';
-import { getActualApi } from '../actual/client';
+import { withActual } from '../actual/client';
+
 const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const api = getActualApi();
-    const categories = await api.getCategories();
-    res.json(categories);
+    res.json(await withActual((actual) => actual.getCategories()));
   } catch (e) {
     next(e);
   }

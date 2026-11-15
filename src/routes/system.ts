@@ -1,19 +1,24 @@
 import { Router } from 'express';
-import { getActualApi, reloadActual } from '../actual/client';
+import { getActualStatus, reloadActual } from '../actual/client';
+import { getComponentStates } from '../lib/health';
 
-const router = Router();
+/** Public, unauthenticated routes. Keep this to liveness/readiness only. */
+export const publicSystemRoutes = Router();
 
-router.get('/health', (req, res) => {
-  try {
-    // Just verify the api can be retrieved
-    getActualApi();
-    res.json({ status: 'ok', ready: true });
-  } catch {
-    res.status(503).json({ status: 'unavailable', ready: false });
-  }
+publicSystemRoutes.get('/health', (req, res) => {
+  const actual = getActualStatus();
+  res.status(actual.ready ? 200 : 503).json({
+    status: actual.ready ? 'ok' : 'unavailable',
+    ready: actual.ready,
+    lastSyncAt: actual.lastSyncAt,
+    components: getComponentStates(),
+  });
 });
 
-router.post('/reload', async (req, res, next) => {
+/** Admin routes. Must be mounted behind authentication. */
+export const adminSystemRoutes = Router();
+
+adminSystemRoutes.post('/reload', async (req, res, next) => {
   try {
     await reloadActual();
     res.json({ status: 'ok', reloaded: true });
@@ -21,5 +26,3 @@ router.post('/reload', async (req, res, next) => {
     next(e);
   }
 });
-
-export default router;

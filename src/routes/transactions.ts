@@ -1,69 +1,84 @@
 import { Router } from 'express';
-import { getActualApi } from '../actual/client';
 import { z } from 'zod';
+import { withActual } from '../actual/client';
+import { createTransactions } from '../services/transactions';
+import { decimalToCents } from '../lib/money';
+import { isValidISODate } from '../lib/dates';
 
 const router = Router();
 
-const transactionSchema = z.object({
-  accountId: z.string(),
-  transactions: z.array(
-    z.object({
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      amount: z.number(), // Input is standard float format (e.g. 12.34), Actual works internally in cents.
-      payee: z.string().optional(),
-      payee_name: z.string().optional(),
-      notes: z.string().optional(),
-      cleared: z.boolean().default(false),
-    }),
-  ),
+const isoDate = z.string().refine(isValidISODate, 'Expected a valid date in YYYY-MM-DD format');
+
+const listQuerySchema = z
+  .object({
+    accountId: z.string().min(1).optional(),
+    startDate: isoDate.optional(),
+    endDate: isoDate.optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  })
+  .refine((q) => Boolean(q.startDate) === Boolean(q.endDate), {
+    message: 'startDate and endDate must be provided together',
+  });
+
+const createSchema = z.object({
+  accountId: z.string().min(1),
+  /**
+   * `add` (default) writes transactions as given.
+   * `import` applies bank-import reconciliation and may merge near-duplicates.
+   */
+  mode: z.enum(['add', 'import']).default('add'),
+  transactions: z
+    .array(
+      z.object({
+        date: isoDate,
+        amount: z.number().finite(), // decimal, e.g. -12.34
+        payee: z.string().optional(),
+        payee_name: z.string().max(200).optional(),
+        category: z.string().optional(),
+        notes: z.string().max(1000).optional(),
+        cleared: z.boolean().default(false),
+      }),
+    )
+    .min(1)
+    .max(500),
 });
+
+const patchSchema = z
+  .object({
+    date: isoDate.optional(),
+    amount: z.number().finite().optional(),
+    payee: z.string().nullable().optional(),
+    category: z.string().nullable().optional(),
+    notes: z.string().max(1000).nullable().optional(),
+    cleared: z.boolean().optional(),
+  })
+  .strict();
 
 router.get('/', async (req, res, next) => {
   try {
-    const accountId = req.query.accountId as string;
-    const startDate = req.query.startDate as string;
-    const endDate = req.query.endDate as string;
+    const { accountId, startDate, endDate, limit, offset } = listQuerySchema.parse(req.query);
 
-    // Pagination (defaults if not provided)
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
-
-
-    const api = getActualApi();
-
-    // In @actual-app/api, transactions are typically retrieved via ActualQL or by getTransactions() if unpaginated.
-    // getTransactions currently just returns an array but actual QL lets us paginate.
-    // For simplicity of wrapper, if using `getTransactions(accountId, startDate, endDate)` we do pagination in-memory, or use q().
-
-    let transactions: any[] = [];
-    if (accountId) {
-      if (startDate && endDate) {
-        transactions = await api.getTransactions(accountId, startDate as string, endDate as string);
-      } else {
-        // If not provided, either require it or provide default wide ranges. Actual requires it.
-        transactions = await api.getTransactions(accountId, '1970-01-01', '2099-12-31');
+    const transactions = await withActual(async (actual) => {
+      if (accountId) {
+        return (await actual.getTransactions(
+          accountId,
+          startDate ?? '1970-01-01',
+          endDate ?? '2999-12-31',
+        )) as unknown[];
       }
-    } else {
-      // Using ActualQL to query all transactions
-      let query = api.q('transactions').select(['*']);
+      let query = actual.q('transactions').select(['*']);
       if (startDate && endDate) {
-        query = query.filter({ date: { $gte: startDate as string, $lte: endDate as string } } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        query = query.filter({ date: { $gte: startDate, $lte: endDate } } as any);
       }
-      const { data } = await api.aqlQuery(query);
-      transactions = data;
-    }
-
-    // Apply offset/limit locally since getTransactions returns everything
-    const total = transactions.length;
-    const paginated = transactions.slice(offset, offset + limit);
+      const { data } = (await actual.aqlQuery(query)) as { data: unknown[] };
+      return data;
+    });
 
     res.json({
-      data: paginated,
-      meta: {
-        total,
-        limit,
-        offset,
-      },
+      data: transactions.slice(offset, offset + limit),
+      meta: { total: transactions.length, limit, offset },
     });
   } catch (e) {
     next(e);
@@ -72,20 +87,21 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { accountId, transactions } = transactionSchema.parse(req.body);
-    const api = getActualApi();
-
-    // Actual expects integer amounts
-    const formattedTransactions = transactions.map((t: any) => ({
-      ...t,
-      amount: api.utils.amountToInteger(t.amount),
-    }));
-
-    // importTransactions does reconciliation, addTransactions just dumps them
-    // Let's use importTransactions as it's safer for normal day-to-day scripting unless explicitly requested
-    const result = await api.importTransactions(accountId, formattedTransactions);
-
-    res.json(result);
+    const { accountId, mode, transactions } = createSchema.parse(req.body);
+    const result = await createTransactions(
+      transactions.map((t) => ({
+        accountId,
+        date: t.date,
+        amount: decimalToCents(t.amount),
+        payeeId: t.payee,
+        payeeName: t.payee_name,
+        categoryId: t.category,
+        notes: t.notes,
+        cleared: t.cleared,
+      })),
+      mode,
+    );
+    res.json({ mode, result });
   } catch (e) {
     next(e);
   }
@@ -93,17 +109,13 @@ router.post('/', async (req, res, next) => {
 
 router.patch('/:id', async (req, res, next) => {
   try {
-    // Requires accountId usually for Actual transactions API or actualQL update
     const { id } = req.params;
-    const api = getActualApi();
-
-    // If user passes amount, we need to convert it
-    const updateData = { ...req.body };
-    if (updateData.amount !== undefined) {
-      updateData.amount = api.utils.amountToInteger(updateData.amount);
-    }
-
-    await api.updateTransaction(id, updateData);
+    const update = patchSchema.parse(req.body);
+    const fields = {
+      ...update,
+      ...(update.amount !== undefined && { amount: decimalToCents(update.amount) }),
+    };
+    await withActual((actual) => actual.updateTransaction(id, fields), { write: true });
     res.json({ success: true });
   } catch (e) {
     next(e);
@@ -113,8 +125,7 @@ router.patch('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const api = getActualApi();
-    await api.deleteTransaction(id);
+    await withActual((actual) => actual.deleteTransaction(id), { write: true });
     res.json({ success: true });
   } catch (e) {
     next(e);

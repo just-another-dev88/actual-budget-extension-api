@@ -43,7 +43,6 @@
     "@actual-app/api": "^26.4.0",
     "@grammyjs/conversations": "^2.1.1",
     "@grammyjs/hydrate": "^1.7.0",
-    "@types/pino": "^7.0.4",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "grammy": "^1.45.1",

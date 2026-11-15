@@ -4,6 +4,10 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@actual-app/api": ["src/types/actual-app-api.d.ts"]
+    },
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,

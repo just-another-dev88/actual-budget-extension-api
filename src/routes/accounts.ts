@@ -1,13 +1,12 @@
 import { Router } from 'express';
-import { getActualApi } from '../actual/client';
+import { withActual } from '../actual/client';
+import type { ActualAccount } from '../services/types';
 
 const router = Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const api = getActualApi();
-    const accounts = await api.getAccounts();
-    res.json(accounts);
+    res.json(await withActual((actual) => actual.getAccounts()));
   } catch (e) {
     next(e);
   }
@@ -15,9 +14,8 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const api = getActualApi();
-    const accounts = await api.getAccounts();
-    const account = accounts.find((a: any) => a.id === req.params.id);
+    const accounts = (await withActual((actual) => actual.getAccounts())) as ActualAccount[];
+    const account = accounts.find((a) => a.id === req.params.id);
     if (!account) {
       res.status(404).json({ error: 'Account not found' });
       return;

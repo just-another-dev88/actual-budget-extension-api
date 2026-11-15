@@ -1,8 +1,30 @@
 import { InlineKeyboard } from 'grammy';
+import { getConfig } from '../../config';
+import { formatMonthLabel, shiftMonth } from '../../lib/dates';
+
+export interface KeyboardAccount {
+  id: string;
+  name: string;
+}
+
+export interface KeyboardCategory {
+  id: string;
+  name: string;
+  group_id?: string;
+  groupId?: string;
+  hidden?: boolean | number;
+}
+
+export interface KeyboardCategoryGroup {
+  id: string;
+  name: string;
+  hidden?: boolean | number;
+}
 
 export function accountKeyboard(
-  accounts: Array<{ id: string; name: string }>,
+  accounts: KeyboardAccount[],
   callbackPrefix = 'select_account',
+  includeCancel = false,
 ): InlineKeyboard {
   const keyboard = new InlineKeyboard();
   let count = 0;
@@ -11,20 +33,28 @@ export function accountKeyboard(
     count++;
     if (count % 2 === 0) keyboard.row();
   }
+  if (includeCancel) {
+    if (count % 2 !== 0) keyboard.row();
+    keyboard.text('❌ Cancel', 'cancel_flow');
+  }
   return keyboard;
 }
 
 export function categoryKeyboard(
-  categories: Array<{ id: string; name: string; group_id?: string }>,
-  groups?: Array<{ id: string; name: string }>,
+  categories: KeyboardCategory[],
+  groups?: KeyboardCategoryGroup[],
   callbackPrefix = 'select_category',
 ): InlineKeyboard {
   const keyboard = new InlineKeyboard();
+  const visibleCategories = categories.filter((c) => !c.hidden);
 
   if (groups && groups.length > 0) {
     for (const group of groups) {
+      if (group.hidden) continue;
+      const groupCats = visibleCategories.filter((c) => (c.groupId ?? c.group_id) === group.id);
+      if (groupCats.length === 0) continue;
+
       keyboard.text(`── ${group.name} ──`, 'noop').row();
-      const groupCats = categories.filter((c) => c.group_id === group.id);
       let count = 0;
       for (const cat of groupCats) {
         keyboard.text(cat.name, `${callbackPrefix}:${cat.id}`);
@@ -35,7 +65,7 @@ export function categoryKeyboard(
     }
   } else {
     let count = 0;
-    for (const cat of categories) {
+    for (const cat of visibleCategories) {
       keyboard.text(cat.name, `${callbackPrefix}:${cat.id}`);
       count++;
       if (count % 2 === 0) keyboard.row();
@@ -43,7 +73,7 @@ export function categoryKeyboard(
     if (count % 2 !== 0) keyboard.row();
   }
 
-  keyboard.row().text('⏭️ Skip', `${callbackPrefix}:skip`);
+  keyboard.row().text('⏭️ Skip', `${callbackPrefix}:skip`).row().text('❌ Cancel', 'cancel_flow');
   return keyboard;
 }
 
@@ -69,7 +99,7 @@ export function paginationKeyboard(
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
   if (hasPrev) {
-    keyboard.text('◀️ Prev', `${prefix}:prev:${offset - limit}${suffix}`);
+    keyboard.text('◀️ Prev', `${prefix}:prev:${Math.max(offset - limit, 0)}${suffix}`);
   }
 
   keyboard.text(`Page ${currentPage} of ${totalPages}`, 'noop');
@@ -85,29 +115,9 @@ export function monthNavigationKeyboard(
   callbackPrefix: string,
   currentMonth: string,
 ): InlineKeyboard {
-  const [yearStr, monthStr] = currentMonth.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
-
-  let prevMonth = month - 1;
-  let prevYear = year;
-  if (prevMonth < 1) {
-    prevMonth = 12;
-    prevYear -= 1;
-  }
-
-  let nextMonth = month + 1;
-  let nextYear = year;
-  if (nextMonth > 12) {
-    nextMonth = 1;
-    nextYear += 1;
-  }
-
-  const prevMonthStr = `${prevYear}-${prevMonth.toString().padStart(2, '0')}`;
-  const nextMonthStr = `${nextYear}-${nextMonth.toString().padStart(2, '0')}`;
-
-  const date = new Date(year, month - 1, 1);
-  const label = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const prevMonthStr = shiftMonth(currentMonth, -1);
+  const nextMonthStr = shiftMonth(currentMonth, 1);
+  const label = formatMonthLabel(currentMonth, getConfig().APP_LOCALE);
 
   return new InlineKeyboard()
     .text('◀️', `${callbackPrefix}:${prevMonthStr}`)

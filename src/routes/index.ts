@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import systemRoutes from './system';
+import { publicSystemRoutes, adminSystemRoutes } from './system';
 import accountsRoutes from './accounts';
 import transactionsRoutes from './transactions';
 import budgetsRoutes from './budgets';
@@ -9,12 +9,13 @@ import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
 
-// Unauthenticated health checks
-router.use('/', systemRoutes);
+// Unauthenticated health check only
+router.use('/', publicSystemRoutes);
 
 // Everything else requires auth
 router.use(authMiddleware);
 
+router.use('/', adminSystemRoutes);
 router.use('/accounts', accountsRoutes);
 router.use('/transactions', transactionsRoutes);
 router.use('/budgets', budgetsRoutes);
