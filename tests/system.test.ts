@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
+
+// Ensure Telegram env vars exist for config validation (dotenv loads .env automatically)
+process.env.TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'test_bot_token';
+process.env.TELEGRAM_ALLOWED_USERS = process.env.TELEGRAM_ALLOWED_USERS || '123456789';
+
 import app from '../src/app';
 
 vi.mock('../src/actual/client', () => ({

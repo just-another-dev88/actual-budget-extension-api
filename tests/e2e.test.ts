@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import app from '../src/app';
 
-// Set test environment variable required for authorization
-process.env.API_KEY = 'test_api_key_123456'; // Ensure length > 16
+// Ensure Telegram env vars exist for config validation (dotenv loads .env automatically)
+process.env.TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'test_bot_token';
+process.env.TELEGRAM_ALLOWED_USERS = process.env.TELEGRAM_ALLOWED_USERS || '123456789';
 
 const mockApi = {
   getAccounts: vi.fn(),

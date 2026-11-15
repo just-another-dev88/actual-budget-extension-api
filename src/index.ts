@@ -1,6 +1,7 @@
 import app from './app';
 import { config } from './config';
 import { initActual, shutdownActual } from './actual/client';
+import { startBot, stopBot } from './telegram/bot';
 
 async function bootstrap() {
   try {
@@ -12,9 +13,13 @@ async function bootstrap() {
       console.log(`🚀 Server listening on port ${config.PORT}`);
     });
 
+    console.log('🤖 Starting Telegram bot...');
+    await startBot();
+
     const gracefulShutdown = async () => {
       console.log('🛑 Received shutdown signal, closing down...');
       server.close();
+      await stopBot();
       await shutdownActual();
       process.exit(0);
     };

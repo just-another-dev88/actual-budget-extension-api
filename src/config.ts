@@ -11,6 +11,9 @@ const configSchema = z.object({
   ACTUAL_E2E_PASSWORD: z.string().optional(),
   API_KEY: z.string().min(18, 'API_KEY must be at least 18 characters long'),
   PORT: z.coerce.number().default(3000),
+  TELEGRAM_BOT_TOKEN: z.string().min(1),
+  TELEGRAM_ALLOWED_USERS: z.string().min(1), // Comma-separated Telegram user IDs
+  TELEGRAM_CURRENCY_SYMBOL: z.string().default('$'),
 });
 
 export const config = configSchema.parse(process.env);
